@@ -1,15 +1,16 @@
 {
-  "name": "mvl-blank-project",
+  "name": "mvl-shop-referral-semis",
   "version": "0.0.1",
   "description": "",
-  "main": "src/mvlblankproject.js",
+  "main": "src/referral.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "mvloader": "^1.0.7",
-    "mvtools": "^1.0.18",
-    "mvl-db-handler": "^1.0.6"
+    "mvloader": "^1.0.10",
+    "mvtools": "^1.1.2",
+    "mvl-db-handler": "^1.0.8",
+    "mvl-shop-semis": "^1.1.0"
   },
   "devDependencies": {},
   "author": "mvoevodskiy",
