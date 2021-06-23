@@ -5,9 +5,7 @@ class mvlShopReferralController extends MVLoaderBase {
   constructor (App, ...config) {
     const localDefaults = {
       levels: {
-        1: 10,
-        2: 7,
-        3: 5
+        1: 10
       },
       statuses: {
         new: ['new'],
@@ -16,7 +14,8 @@ class mvlShopReferralController extends MVLoaderBase {
         cancelled: ['cancelled']
       },
       defaultRequestType: 'withdrawal',
-      defaultRequestMethod: 'bankCard'
+      defaultRequestMethod: 'bankCard',
+      profileExtendedKey: 'mvlShopReferral'
     }
     super(localDefaults, ...config)
     this.App = App
@@ -105,18 +104,22 @@ class mvlShopReferralController extends MVLoaderBase {
     if (customer !== null) {
       while (true) {
         if (level in this.config.levels && currentLevelUser !== null) {
-          const amount = Math.round(order.cost * this.config.levels[level] / 100)
-          const values = {
-            OrderId: order.id,
-            CustomerId: currentLevelUser.id,
-            CreatorId: customer.id,
-            extended: {
-              level,
-              percent: this.config.levels[level]
+          let percent = this.config.levels[level]
+          const ext = await this.getProfileExt(currentLevelUser)
+          const personalPercent = mt.extract('levels.' + level, ext)
+          const intPersonalPercent = parseInt(personalPercent)
+          if (personalPercent !== undefined && !isNaN(intPersonalPercent) && intPersonalPercent > 0) percent = intPersonalPercent
+          const amount = Math.round(order.cost * percent / 100)
+          if (amount > 0) {
+            const values = {
+              OrderId: order.id,
+              CustomerId: currentLevelUser.id,
+              CreatorId: customer.id,
+              extended: { level, percent }
             }
+            const account = await this.App.ext.controllers.mvlShopCustomerAccount.get('referral', currentLevelUser)
+            await this.App.ext.controllers.mvlShopCustomerAccount.increase(account, amount, values)
           }
-          const account = await this.App.ext.controllers.mvlShopCustomerAccount.get('referral', currentLevelUser)
-          await this.App.ext.controllers.mvlShopCustomerAccount.increase(account, amount, values)
           currentLevelUser = await currentLevelUser.getRefParent()
           level++
         } else break
@@ -257,6 +260,34 @@ class mvlShopReferralController extends MVLoaderBase {
       CustomerId: user.id
 
     })
+  }
+
+  async getProfileExt (userOrProfile) {
+    let ext = {}
+    const profile = await this.getProfile(userOrProfile)
+    if (!mt.empty(profile)) ext = mt.extract(this.config.profileExtendedKey, profile.get('extended'), {})
+    return ext
+  }
+
+  async getProfile (userOrProfile) {
+    return userOrProfile instanceof this.App.DB.models.mvlUser ? await userOrProfile.getProfile() : userOrProfile
+  }
+
+  async setProfileExt (userOrProfile, newExt) {
+    const profile = await this.getProfile(userOrProfile)
+    if (!mt.empty(profile)) {
+      const ext = profile.get('extended')
+      ext[this.config.profileExtendedKey] = newExt
+      profile.set('extended', ext)
+      await profile.save()
+    }
+    return profile
+  }
+
+  async setPersonalLevels (userOrProfile, levels) {
+    const ext = this.getProfileExt(userOrProfile)
+    ext.levels = levels
+    return this.setProfileExt(userOrProfile, ext)
   }
 }
 
