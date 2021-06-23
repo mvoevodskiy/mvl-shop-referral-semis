@@ -78,13 +78,13 @@ class mvlShopReferralWithdrawalController extends MVLoaderBase {
 
   async can (refStatus, request = null) {
     const last = refStatus.lastWithdrawal !== null ? refStatus.lastWithdrawal.createdAt : null
-    const balance = refStatus.account?.balance || 0
+    const balance = !mt.empty(refStatus.account) ? (refStatus.account.balance || 0) : 0
     // console.log('WITHDRAWAL CAN. LAST', last, 'BALANCE', balance, 'REQUEST', request)
     const newDate = this.config.period !== 0 ? DateTime.fromJSDate(last).plus(this.config.period) : null
     const canSum = balance > this.config.minAmount && (parseFloat(request || '0') <= parseFloat(balance))
     const canDate = this.config.period === 0 || (last === null) || (newDate <= DateTime.local())
     const where = {
-      CustomerId: refStatus.account?.CustomerId || 0,
+      CustomerId: !mt.empty(refStatus.account) ? (refStatus.account.CustomerId || 0) : 0,
       status: this.STATUSES.NEW
     }
     const pending = await this.App.DB.models.mvlShopReferralRequest.count({ where, logging: console.log })
