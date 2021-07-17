@@ -13,6 +13,7 @@ class mvlShopReferralController extends MVLoaderBase {
         done: ['done'],
         cancelled: ['cancelled']
       },
+      accountType: 'referral',
       defaultRequestType: 'withdrawal',
       defaultRequestMethod: 'bankCard',
       profileExtendedKey: 'mvlShopReferral'
@@ -117,7 +118,7 @@ class mvlShopReferralController extends MVLoaderBase {
               CreatorId: customer.id,
               extended: { level, percent }
             }
-            const account = await this.App.ext.controllers.mvlShopCustomerAccount.get('referral', currentLevelUser)
+            const account = await this.App.ext.controllers.mvlShopCustomerAccount.get(this.config.accountType, currentLevelUser)
             await this.App.ext.controllers.mvlShopCustomerAccount.increase(account, amount, values)
           }
           currentLevelUser = await currentLevelUser.getRefParent()
@@ -130,7 +131,7 @@ class mvlShopReferralController extends MVLoaderBase {
   async status (user, periods = {}) {
     user = await this.getUser(user)
     const promises = []
-    const account = await this.Shop.CustomerAccount.get('referral', user)
+    const account = await this.Shop.CustomerAccount.get(this.config.accountType, user)
     let lastReceive
     let lastWithdrawal
     const conversion = {}
@@ -152,18 +153,8 @@ class mvlShopReferralController extends MVLoaderBase {
     )
     for (const key in periods) {
       if (Object.prototype.hasOwnProperty.call(periods, key)) {
-        let start = null
-        let end = null
-        if (periods[key] !== undefined && periods[key] !== null) {
-          if (typeof periods[key] === 'string' || (typeof periods[key] === 'object' && periods[key] instanceof Date)) start = periods[key]
-          else if (typeof periods[key] === 'object') {
-            if (!mt.empty(periods[key].start)) start = periods[key].start
-            if (!mt.empty(periods[key].end)) end = periods[key].end
-          }
-        } else {
-          // console.log('PERIOD EMPTY:', periods[key])
-        }
-        // console.log('PERIOD', key, periods[key], 'START', start, 'END', end, 'PERIOD TYPE', typeof periods[key] === 'object' ? periods[key].constructor.name : typeof periods[key])
+        const { start, end } = this.getStartEndFromPeriod(periods[key])
+        console.log('PERIOD', key, periods[key], 'START', start, 'END', end, 'PERIOD TYPE', typeof periods[key] === 'object' ? periods[key].constructor.name : typeof periods[key])
         promises.push(
           (async () => { conversion[key] = await this.getReferralsCountByLevels(user, start, end) })(),
           (async () => { receive[key] = await this.getReceiveSum(user, start, end) })(),
@@ -173,6 +164,32 @@ class mvlShopReferralController extends MVLoaderBase {
     }
     await Promise.allSettled(promises)
     return { account, lastReceive, lastWithdrawal, conversion, receive, withdrawal }
+  }
+
+  async statusAll (periods = {}) {
+    const promises = []
+    const receive = {}
+    const withdrawal = {}
+    let accountsSum
+    promises.push(
+      (async () => {
+        accountsSum = await this.App.DB.models.mvlShopCustomerAccount.sum('balance', {
+          where: { type: this.config.accountType }
+        }).catch(e => console.error(e))
+      })()
+    )
+    for (const key in periods) {
+      if (Object.prototype.hasOwnProperty.call(periods, key)) {
+        const { start, end } = this.getStartEndFromPeriod(periods[key])
+        // console.log('PERIOD', key, periods[key], 'START', start, 'END', end, 'PERIOD TYPE', typeof periods[key] === 'object' ? periods[key].constructor.name : typeof periods[key])
+        promises.push(
+          (async () => { receive[key] = await this.getReceiveSum(null, start, end) })(),
+          (async () => { withdrawal[key] = await this.getWithdrawalSum(null, start, end) })()
+        )
+      }
+    }
+    await Promise.allSettled(promises)
+    return { accountsSum, receive, withdrawal }
   }
 
   // /**
@@ -204,12 +221,13 @@ class mvlShopReferralController extends MVLoaderBase {
   //   return counts
   // }
 
-  async getReferralsCountByLevels (user, start = null, end = null) {
-    const count = { level1: 0, level2: 0, level3: 0 }
+  async getReferralsCountByLevels (user = null, start = null, end = null) {
+    const count = {}
     const levels = Object.keys(this.config.levels)
     let level = parseInt(levels[0])
     const max = parseInt(levels[levels.length - 1])
-    const where = { RefParentId: [user.id] }
+    const where = {}
+    if (user !== null) where.RefParentId = [user.id]
     if (start !== null) where.createdAt = { [this.App.DB.S.Op.gte]: start }
     if (end !== null) where.createdAt = { [this.App.DB.S.Op.lte]: end }
     while (level <= max) {
@@ -237,7 +255,8 @@ class mvlShopReferralController extends MVLoaderBase {
   }
 
   async getLogSum (user, comparison = 'gt', start = null, end = null) {
-    const where = { CustomerId: user.id, amount: { [this.App.DB.S.Op[comparison]]: 0 } }
+    const where = { type: this.config.accountType, amount: { [this.App.DB.S.Op[comparison]]: 0 } }
+    if (user !== null) where.CustomerId = user.id
     if (start !== null) where.createdAt = { [this.App.DB.S.Op.gte]: start }
     if (end !== null) where.createdAt = { [this.App.DB.S.Op.lte]: end }
     return (
@@ -288,6 +307,21 @@ class mvlShopReferralController extends MVLoaderBase {
     const ext = this.getProfileExt(userOrProfile)
     ext.levels = levels
     return this.setProfileExt(userOrProfile, ext)
+  }
+
+  getStartEndFromPeriod (period) {
+    let start = null
+    let end = null
+    if (period !== undefined && period !== null) {
+      if (typeof period === 'string' || (typeof period === 'object' && period instanceof Date)) start = period
+      else if (typeof period === 'object') {
+        if (!mt.empty(period.start)) start = period.start
+        if (!mt.empty(period.end)) end = period.end
+      }
+    } else {
+      // console.log('PERIOD EMPTY:', periods[key])
+    }
+    return { start, end }
   }
 }
 
