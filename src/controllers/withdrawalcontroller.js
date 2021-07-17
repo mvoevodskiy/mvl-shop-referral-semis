@@ -59,7 +59,10 @@ class mvlShopReferralWithdrawalController extends MVLoaderBase {
     const refStatus = await this.Referral.status(user)
     const can = await this.can(refStatus)
     if (can) {
-      const request = await this.App.DB.models.mvlShopReferralRequest.create(mt.merge(this.config.defaultRequest, { amount, CustomerId: user.id, method, requisites }))
+      const request = await this.App.DB.models.mvlShopReferralRequest.create(mt.merge(
+        this.config.defaultRequest,
+        { amount, CustomerId: user.id, method, requisites, AccountId: refStatus.account.id }
+      ))
       return this.success('', { request })
     } else {
       let code
@@ -77,12 +80,12 @@ class mvlShopReferralWithdrawalController extends MVLoaderBase {
   }
 
   async can (refStatus, request = null) {
-    const last = refStatus.lastWithdrawal !== null ? refStatus.lastWithdrawal.createdAt : null
+    const last = refStatus.lastWithdrawal !== null ? Math.max(refStatus.lastWithdrawal.createdAt, refStatus.lastWithdrawal.updatedAt) : null
     const balance = !mt.empty(refStatus.account) ? (refStatus.account.balance || 0) : 0
     // console.log('WITHDRAWAL CAN. LAST', last, 'BALANCE', balance, 'REQUEST', request)
-    const newDate = this.config.period !== 0 ? DateTime.fromJSDate(last).plus(this.config.period) : null
+    const newDate = this.config.minPeriod !== 0 ? DateTime.fromMillis(last).plus(this.config.minPeriod) : null
     const canSum = balance > this.config.minAmount && (parseFloat(request || '0') <= parseFloat(balance))
-    const canDate = this.config.period === 0 || (last === null) || (newDate <= DateTime.local())
+    const canDate = this.config.minPeriod === 0 || (last === null) || (newDate <= DateTime.local())
     const where = {
       CustomerId: !mt.empty(refStatus.account) ? (refStatus.account.CustomerId || 0) : 0,
       status: this.STATUSES.NEW
