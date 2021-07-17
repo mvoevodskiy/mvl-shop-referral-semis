@@ -79,6 +79,19 @@ class mvlShopReferralWithdrawalController extends MVLoaderBase {
     }
   }
 
+  async cancel (request, reason = null) {
+    await request.update({ status: this.config.statuses.cancelled, reason })
+    return request
+  }
+
+  async done (request, CreatorId = null) {
+    const account = await request.getAccount()
+    const values = { CreatorId }
+    await this.Shop.CustomerAccount.increase(account, request.amount * -1, values)
+    await request.update({ status: this.config.statuses.done })
+    return request
+  }
+
   async can (refStatus, request = null) {
     const last = refStatus.lastWithdrawal !== null ? Math.max(refStatus.lastWithdrawal.createdAt, refStatus.lastWithdrawal.updatedAt) : null
     const balance = !mt.empty(refStatus.account) ? (refStatus.account.balance || 0) : 0
